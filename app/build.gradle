@@ -1,0 +1,198 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2016 Piasy
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+apply plugin: 'com.android.application'
+apply plugin: 'me.tatarka.retrolambda'
+apply plugin: 'com.frogermcs.androiddevmetrics'
+apply plugin: 'de.mobilej.unmock'
+apply plugin: 'com.ofg.uptodate'
+apply plugin: 'com.getkeepsafe.dexcount'
+apply plugin: 'io.fabric'
+apply plugin: 'com.jakewharton.butterknife'
+apply plugin: 'android-git-sha'
+apply plugin: 'net.ltgt.errorprone'
+apply from: '../AndroidCodeQualityConfig/quality.gradle'
+
+/*def keyConfigPath
+if (isFamily(FAMILY_WINDOWS)) {
+    keyConfigPath = System.getenv('USERPROFILE') + File.separator + ".ssh" + File.separator +
+            "TemplateKeyStore.properties"
+} else {
+    keyConfigPath = System.getenv('HOME') + File.separator + ".ssh" + File.separator +
+            "TemplateKeyStore.properties"
+}
+
+Properties props = new Properties()
+if (new File(keyConfigPath).exists()) {
+    props.load(new FileInputStream(file(keyConfigPath)))
+}*/
+
+def isTravis = "true".equals(System.getenv("TRAVIS"))
+
+android {
+    compileSdkVersion rootProject.ext.androidCompileSdkVersion
+    buildToolsVersion rootProject.ext.androidBuildToolsVersion
+
+    defaultConfig {
+        applicationId "com.github.piasy.bootstrap"
+        minSdkVersion rootProject.ext.androidMinSdkVersion
+        targetSdkVersion rootProject.ext.androidTargetSdkVersion
+        versionCode rootProject.ext.releaseVersionCode
+        versionName rootProject.ext.releaseVersionName
+
+        multiDexEnabled true
+        vectorDrawables.useSupportLibrary = true
+        testInstrumentationRunner "com.github.piasy.bootstrap.BootstrapAppRunner"
+
+        buildConfigField "String", "API_BASE_URL", "\"https://api.github.com/\""
+        buildConfigField "int", "EXOPACKAGE_FLAGS", "0"
+    }
+
+    packagingOptions {
+        exclude 'META-INF/services/javax.annotation.processing.Processor'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/rxjava.properties'
+    }
+
+    dexOptions {
+        // Skip pre-dexing when running on Travis CI or when disabled via -Dpre-dex=false.
+        preDexLibraries = !isTravis
+        maxProcessCount 8
+        javaMaxHeapSize = isTravis ? "2g" : "6g"
+    }
+
+    signingConfigs {
+        develop {
+            storeFile file('../buildsystem/OpenKey.jks')
+            storePassword '123456'
+            keyAlias '123456'
+            keyPassword '123456'
+        }
+
+        /*production {
+            storeFile file(props['keystore'])
+            storePassword props['keystore.password']
+            keyAlias props['key.alias']
+            keyPassword props['key.password']
+        }*/
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            debuggable true
+            signingConfig signingConfigs.develop
+            testCoverageEnabled isTravis
+            ext.enableCrashlytics = false
+        }
+
+        release {
+            minifyEnabled true
+            debuggable false
+            shrinkResources true
+            signingConfig signingConfigs.develop
+            //signingConfig signingConfigs.production
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            ext.enableCrashlytics = true
+        }
+    }
+
+    productFlavors {
+        dev {
+            // inherit from default config
+            buildConfigField "int", "EXOPACKAGE_FLAGS", "1"
+        }
+
+        prod {
+            // inherit from default config
+        }
+    }
+}
+
+unMock {
+    downloadFrom 'https://oss.sonatype.org/content/groups/public/org/robolectric/android-all/6.0.0_r1-robolectric-0/android-all-6.0.0_r1-robolectric-0.jar'
+    downloadTo "${System.getenv('HOME')}/.gradle/caches/"
+
+    keep "android.text.TextUtils"
+}
+
+gitSha {
+    buildTypeMatcher = 'release'
+    flavorMatcher = '.*'
+    abortIfGitDirty = false
+}
+
+dependencies {
+    def appDependencies = rootProject.ext.appDependencies
+    def aptDependencies = rootProject.ext.aptDependencies
+    def testDependencies = rootProject.ext.testDependencies
+
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile appDependencies.cardViewV7
+
+    compile project(':model')
+
+    compile appDependencies.rxJavaProGuardRules
+
+    compile(appDependencies.fresco) {
+        exclude module: 'support-v4'
+    }
+    compile(appDependencies.iconifyMD) {
+        exclude module: 'support-v4'
+    }
+    compile(appDependencies.statusBarUtil) {
+        exclude module: 'appcompat-v7'
+    }
+
+    compile(appDependencies.crashlytics) {
+        transitive = true;
+    }
+    compile(appDependencies.answers) {
+        transitive = true;
+    }
+
+    compile appDependencies.gitSha
+    compile appDependencies.stetho
+    compile appDependencies.strictmodeNotifier
+    compile appDependencies.anrWatchDog
+    compile appDependencies.blockCanary
+    compile appDependencies.leakCanary
+
+    annotationProcessor aptDependencies.daggerApt
+    annotationProcessor aptDependencies.autoBundleApt
+    annotationProcessor aptDependencies.icepickApt
+    annotationProcessor aptDependencies.butterKnifeApt
+    annotationProcessor aptDependencies.onActivityResultApt
+    retrolambdaConfig aptDependencies.retrolambda
+    errorprone aptDependencies.errorprone
+
+    androidTestCompile project(':mocks')
+    androidTestCompile project(':testbase')
+    androidTestAnnotationProcessor(aptDependencies.daggerApt) {
+        exclude module: 'dagger'
+    }
+    androidTestProvided testDependencies.restMockAndroid
+    androidTestProvided testDependencies.hamcrestLibrary
+}
